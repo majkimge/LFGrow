@@ -114,44 +114,45 @@ contract FeeFollowModule is IFollowModule, FeeModuleBase, FollowValidatorFollowM
         if (currencyFrom == currencyTo){
             IERC20(currencyFrom).safeTransferFrom(follower, recipient, adjustedAmountIn);
             IERC20(currencyFrom).safeTransferFrom(follower, treasury, treasuryAmountIn);
-        }else if()
-        // msg.sender must approve this contract
-        uint 256 amountIn = treasuryAmountIn+adjustedAmountIn;
-        // Transfer the specified amount of DAI to this contract.
-        TransferHelper.safeTransferFrom(currencyFrom, msg.sender, address(this), amountIn);
+        }else{
+            // msg.sender must approve this contract
+            uint 256 amountIn = treasuryAmountIn+adjustedAmountIn;
+            // Transfer the specified amount of DAI to this contract.
+            TransferHelper.safeTransferFrom(currencyFrom, msg.sender, address(this), amountIn);
 
-        // Approve the router to spend DAI.
-        TransferHelper.safeApprove(currencyFrom, address(swapRouter), amountIn);
+            // Approve the router to spend DAI.
+            TransferHelper.safeApprove(currencyFrom, address(swapRouter), amountIn);
 
-        // Naively set amountOutMinimum to 0. In production, use an oracle or other data source to choose a safer value for amountOutMinimum.
-        // We also set the sqrtPriceLimitx96 to be 0 to ensure we swap our exact input amount.
-        ISwapRouter.ExactInputSingleParams memory params =
-            ISwapRouter.ExactInputSingleParams({
-                tokenIn: currencyFrom,
-                tokenOut: currencyTo,
-                fee: 3000,
-                recipient: treasury,
-                deadline: block.timestamp,
-                amountIn: treasuryAmountIn,
-                amountOutMinimum: treasuryAmountOut,
-                sqrtPriceLimitX96: 0
-            });
+            // Naively set amountOutMinimum to 0. In production, use an oracle or other data source to choose a safer value for amountOutMinimum.
+            // We also set the sqrtPriceLimitx96 to be 0 to ensure we swap our exact input amount.
+            ISwapRouter.ExactInputSingleParams memory params =
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: currencyFrom,
+                    tokenOut: currencyTo,
+                    fee: 3000,
+                    recipient: treasury,
+                    deadline: block.timestamp,
+                    amountIn: treasuryAmountIn,
+                    amountOutMinimum: treasuryAmountOut,
+                    sqrtPriceLimitX96: 0
+                });
 
-        amountOut = swapRouter.exactInputSingle(params);
+            amountOut = swapRouter.exactInputSingle(params);
 
-        ISwapRouter.ExactInputSingleParams memory params =
-            ISwapRouter.ExactInputSingleParams({
-                tokenIn: currencyFrom,
-                tokenOut: currencyTo,
-                fee: 3000,
-                recipient: recipient,
-                deadline: block.timestamp,
-                amountIn: adjustedAmountIn,
-                amountOutMinimum: adjustedAmountOut,
-                sqrtPriceLimitX96: 0
-            });
+            ISwapRouter.ExactInputSingleParams memory params =
+                ISwapRouter.ExactInputSingleParams({
+                    tokenIn: currencyFrom,
+                    tokenOut: currencyTo,
+                    fee: 3000,
+                    recipient: recipient,
+                    deadline: block.timestamp,
+                    amountIn: adjustedAmountIn,
+                    amountOutMinimum: adjustedAmountOut,
+                    sqrtPriceLimitX96: 0
+                });
 
-        amountOut = swapRouter.exactInputSingle(params);
+            amountOut = swapRouter.exactInputSingle(params);
+        }
     }
 
     /**
