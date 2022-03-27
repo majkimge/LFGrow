@@ -68,6 +68,7 @@ contract PriceConsumerV3 {
  * @notice This is a simple Lens FollowModule implementation, inheriting from the IFollowModule interface, but with additional
  * variables that can be controlled by governance, such as the governance & treasury addresses as well as the treasury fee.
  */
+
 contract FixedCurrencyFeeFollowModule is
     IFollowModule,
     FeeModuleBase,
@@ -174,6 +175,7 @@ contract FixedCurrencyFeeFollowModule is
             50;
         console.log(feedInfo.tokenFromDecimals);
         require(feedInfo.amount > feedInfo.adjustedDesiredInMax + feedInfo.treasuryDesiredInMax);
+
 
         exchangeAndSendToRecipient(
             follower,
