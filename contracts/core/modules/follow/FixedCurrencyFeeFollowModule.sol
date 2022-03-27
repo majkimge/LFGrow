@@ -142,47 +142,56 @@ contract FeeFollowModule is IFollowModule, FeeModuleBase, FollowValidatorFollowM
         uint256 treasuryAmountOut,
         uint256 adjustedAmountOut
     ) internal {
-        if (currencyFrom == currencyTo){
+        if (currencyFrom == currencyTo) {
             IERC20(currencyFrom).safeTransferFrom(follower, recipient, adjustedAmountIn);
             IERC20(currencyFrom).safeTransferFrom(follower, treasury, treasuryAmountIn);
-        }else{
+        } else {
             // msg.sender must approve this contract
-            uint 256 amountIn = treasuryAmountIn+adjustedAmountIn;
+            uint256 amountInMax = treasuryAmountIn + adjustedAmountIn;
             // Transfer the specified amount of DAI to this contract.
-            TransferHelper.safeTransferFrom(currencyFrom, msg.sender, address(this), amountIn);
+            TransferHelper.safeTransferFrom(currencyFrom, msg.sender, address(this), amountInMax);
 
             // Approve the router to spend DAI.
-            TransferHelper.safeApprove(currencyFrom, address(swapRouter), amountIn);
+            TransferHelper.safeApprove(currencyFrom, address(swapRouter), amountInMax);
 
             // Naively set amountOutMinimum to 0. In production, use an oracle or other data source to choose a safer value for amountOutMinimum.
             // We also set the sqrtPriceLimitx96 to be 0 to ensure we swap our exact input amount.
-            ISwapRouter.ExactInputSingleParams memory params =
-                ISwapRouter.ExactInputSingleParams({
+            ISwapRouter.ExactOutputSingleParams memory paramsTreasury = ISwapRouter
+                .ExactOutputSingleParams({
                     tokenIn: currencyFrom,
                     tokenOut: currencyTo,
                     fee: 3000,
                     recipient: treasury,
                     deadline: block.timestamp,
-                    amountIn: treasuryAmountIn,
-                    amountOutMinimum: treasuryAmountOut,
+                    amountOut: treasuryAmountOut,
+                    amountInMaximum: treasuryAmountIn,
                     sqrtPriceLimitX96: 0
                 });
 
-            amountOut = swapRouter.exactInputSingle(params);
+            // Executes the swap returning the amountIn needed to spend to receive the desired amountOut.
+            uint256 amountIn = swapRouter.exactOutputSingle(paramsTreasury);
 
-            ISwapRouter.ExactInputSingleParams memory params =
-                ISwapRouter.ExactInputSingleParams({
+            ISwapRouter.ExactOutputSingleParams memory paramsRecipient = ISwapRouter
+                .ExactOutputSingleParams({
                     tokenIn: currencyFrom,
                     tokenOut: currencyTo,
                     fee: 3000,
                     recipient: recipient,
                     deadline: block.timestamp,
-                    amountIn: adjustedAmountIn,
-                    amountOutMinimum: adjustedAmountOut,
+                    amountOut: adjustedAmountOut,
+                    amountInMaximum: adjustedAmountIn,
                     sqrtPriceLimitX96: 0
                 });
 
-            amountOut = swapRouter.exactInputSingle(params);
+            // Executes the swap returning the amountIn needed to spend to receive the desired amountOut.
+            amountIn = amountIn + swapRouter.exactOutputSingle(paramsRecipient);
+
+            // For exact output swaps, the amountInMaximum may not have all been spent.
+            // If the actual amount spent (amountIn) is less than the specified maximum amount, we must refund the msg.sender and approve the swapRouter to spend 0.
+            if (amountIn < amountInMax) {
+                TransferHelper.safeApprove(currencyFrom, address(swapRouter), 0);
+                TransferHelper.safeTransfer(currencyFrom, msg.sender, amountInMax - amountIn);
+            }
         }
     }
 
