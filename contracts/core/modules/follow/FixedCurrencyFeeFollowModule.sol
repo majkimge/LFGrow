@@ -14,6 +14,7 @@ import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC721} from '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
 import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
+import 'hardhat/console.sol';
 
 /**
  * @notice A struct containing the necessary data to execute follow actions on a given profile.
@@ -34,24 +35,14 @@ contract PriceConsumerV3 {
     mapping(address => address) internal priceFeeds;
 
     constructor() {
-        AggregatorV3Interface ethPriceFeed = AggregatorV3Interface(
-            0xF9680D99D6C9589e2a93a78A04A279e509205945
-        );
-        AggregatorV3Interface btcPriceFeed = AggregatorV3Interface(
-            0xc907E116054Ad103354f2D350FD2514433D57F6f
-        );
-        AggregatorV3Interface maticPriceFeed = AggregatorV3Interface(
-            0xAB594600376Ec9fD91F8e885dADF0CE036862dE0
-        );
-
         priceFeeds[
-            0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619
+            0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619 //ETH
         ] = 0xF9680D99D6C9589e2a93a78A04A279e509205945;
         priceFeeds[
-            0xc907E116054Ad103354f2D350FD2514433D57F6f
+            0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6 //BTC
         ] = 0xc907E116054Ad103354f2D350FD2514433D57F6f;
         priceFeeds[
-            0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270
+            0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270 //MATIC
         ] = 0xAB594600376Ec9fD91F8e885dADF0CE036862dE0;
     }
 
@@ -77,7 +68,12 @@ contract PriceConsumerV3 {
  * @notice This is a simple Lens FollowModule implementation, inheriting from the IFollowModule interface, but with additional
  * variables that can be controlled by governance, such as the governance & treasury addresses as well as the treasury fee.
  */
-contract FeeFollowModule is IFollowModule, FeeModuleBase, FollowValidatorFollowModuleBase {
+
+contract FixedCurrencyFeeFollowModule is
+    IFollowModule,
+    FeeModuleBase,
+    FollowValidatorFollowModuleBase
+{
     using SafeERC20 for IERC20;
 
     mapping(uint256 => ProfileData) internal _dataByProfile;
@@ -177,6 +173,9 @@ contract FeeFollowModule is IFollowModule, FeeModuleBase, FollowValidatorFollowM
             feedInfo.treasuryDesiredIn +
             feedInfo.treasuryDesiredIn /
             50;
+        console.log(feedInfo.tokenFromDecimals);
+        require(feedInfo.amount > feedInfo.adjustedDesiredInMax + feedInfo.treasuryDesiredInMax);
+
 
         exchangeAndSendToRecipient(
             follower,
