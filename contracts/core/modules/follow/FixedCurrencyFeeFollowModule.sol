@@ -27,6 +27,37 @@ struct ProfileData {
     address recipient;
 }
 
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
+contract PriceConsumerV3 {
+
+    mapping(address => AggregatorV3Interface) internal priceFeeds;
+
+    constructor() {
+        AggregatorV3Interface ethPriceFeed = AggregatorV3Interface(0xF9680D99D6C9589e2a93a78A04A279e509205945);
+        AggregatorV3Interface btcPriceFeed = AggregatorV3Interface(0xc907E116054Ad103354f2D350FD2514433D57F6f);
+        AggregatorV3Interface maticPriceFeed = AggregatorV3Interface(0xAB594600376Ec9fD91F8e885dADF0CE036862dE0);
+
+        priceFeeds[0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619] = ethPriceFeed;
+        priceFeeds[0xc907E116054Ad103354f2D350FD2514433D57F6f] = btcPriceFeed;
+        priceFeeds[0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270] = maticPriceFeed;
+    }
+    
+    function getLatestPrice(address tokenAddress) public view returns (int) {
+        AggregatorV3Interface priceFeed = priceFeeds[tokenAddress];
+        require(priceFeed != 0);
+        (
+            /*uint80 roundID*/,
+            int price,
+            /*uint startedAt*/,
+            /*uint timeStamp*/,
+            /*uint80 answeredInRound*/
+        ) = priceFeed.latestRoundData();
+        return price;
+    }
+}
+
+
 /**
  * @title FeeFollowModule
  * @author Lens Protocol
