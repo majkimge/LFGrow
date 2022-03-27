@@ -9,6 +9,7 @@ import {FeeModuleBase} from '../FeeModuleBase.sol';
 import {ModuleBase} from '../ModuleBase.sol';
 import {FollowValidatorFollowModuleBase} from './FollowValidatorFollowModuleBase.sol';
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import {ERC20} from '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import {IERC721} from '@openzeppelin/contracts/token/ERC721/IERC721.sol';
 import '@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol';
@@ -27,36 +28,47 @@ struct ProfileData {
     address recipient;
 }
 
-import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import '@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol';
 
 contract PriceConsumerV3 {
-
-    mapping(address => AggregatorV3Interface) internal priceFeeds;
+    mapping(address => address) internal priceFeeds;
 
     constructor() {
-        AggregatorV3Interface ethPriceFeed = AggregatorV3Interface(0xF9680D99D6C9589e2a93a78A04A279e509205945);
-        AggregatorV3Interface btcPriceFeed = AggregatorV3Interface(0xc907E116054Ad103354f2D350FD2514433D57F6f);
-        AggregatorV3Interface maticPriceFeed = AggregatorV3Interface(0xAB594600376Ec9fD91F8e885dADF0CE036862dE0);
+        AggregatorV3Interface ethPriceFeed = AggregatorV3Interface(
+            0xF9680D99D6C9589e2a93a78A04A279e509205945
+        );
+        AggregatorV3Interface btcPriceFeed = AggregatorV3Interface(
+            0xc907E116054Ad103354f2D350FD2514433D57F6f
+        );
+        AggregatorV3Interface maticPriceFeed = AggregatorV3Interface(
+            0xAB594600376Ec9fD91F8e885dADF0CE036862dE0
+        );
 
-        priceFeeds[0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619] = ethPriceFeed;
-        priceFeeds[0xc907E116054Ad103354f2D350FD2514433D57F6f] = btcPriceFeed;
-        priceFeeds[0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270] = maticPriceFeed;
+        priceFeeds[
+            0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619
+        ] = 0xF9680D99D6C9589e2a93a78A04A279e509205945;
+        priceFeeds[
+            0xc907E116054Ad103354f2D350FD2514433D57F6f
+        ] = 0xc907E116054Ad103354f2D350FD2514433D57F6f;
+        priceFeeds[
+            0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270
+        ] = 0xAB594600376Ec9fD91F8e885dADF0CE036862dE0;
     }
-    
-    function getLatestPrice(address tokenAddress) public view returns (int) {
-        AggregatorV3Interface priceFeed = priceFeeds[tokenAddress];
-        require(priceFeed != 0);
+
+    function getLatestPrice(address tokenAddress) public view returns (int256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(priceFeeds[tokenAddress]);
+        require(priceFeeds[tokenAddress] != address(0));
         (
-            /*uint80 roundID*/,
-            int price,
-            /*uint startedAt*/,
-            /*uint timeStamp*/,
-            /*uint80 answeredInRound*/
+            ,
+            /*uint80 roundID*/
+            int256 price, /*uint startedAt*/ /*uint timeStamp*/ /*uint80 answeredInRound*/
+            ,
+            ,
+
         ) = priceFeed.latestRoundData();
         return price;
     }
 }
-
 
 /**
  * @title FeeFollowModule
@@ -71,6 +83,7 @@ contract FeeFollowModule is IFollowModule, FeeModuleBase, FollowValidatorFollowM
     mapping(uint256 => ProfileData) internal _dataByProfile;
 
     ISwapRouter public immutable swapRouter;
+    PriceConsumerV3 public immutable priceConsumer = new PriceConsumerV3();
 
     constructor(
         address hub,
@@ -109,6 +122,22 @@ contract FeeFollowModule is IFollowModule, FeeModuleBase, FollowValidatorFollowM
         return data;
     }
 
+    struct FeedInfo {
+        uint256 priceFrom;
+        uint256 priceTo;
+        uint256 treasuryAmount;
+        uint256 adjustedAmount;
+        uint256 tokenFromDecimals;
+        uint256 tokenToDecimals;
+        uint256 amount;
+        address currency;
+        address recipient;
+        uint256 adjustedDesiredIn;
+        uint256 adjustedDesiredInMax;
+        uint256 treasuryDesiredIn;
+        uint256 treasuryDesiredInMax;
+    }
+
     /**
      * @dev Processes a follow by:
      *  1. Charging a fee
@@ -118,17 +147,48 @@ contract FeeFollowModule is IFollowModule, FeeModuleBase, FollowValidatorFollowM
         uint256 profileId,
         bytes calldata data
     ) external override onlyHub {
-        uint256 amount = _dataByProfile[profileId].amount;
-        address currency = _dataByProfile[profileId].currency;
-        _validateDataIsExpected(data, currency, amount);
-
+        FeedInfo memory feedInfo;
+        feedInfo.amount = _dataByProfile[profileId].amount;
+        feedInfo.currency = _dataByProfile[profileId].currency;
+        feedInfo.recipient = _dataByProfile[profileId].recipient;
+        //_validateDataIsExpected(data, currency, amount);
+        (address decodedCurrency, uint256 decodedAmount) = abi.decode(data, (address, uint256));
         (address treasury, uint16 treasuryFee) = _treasuryData();
-        address recipient = _dataByProfile[profileId].recipient;
-        uint256 treasuryAmount = (amount * treasuryFee) / BPS_MAX;
-        uint256 adjustedAmount = amount - treasuryAmount;
 
-        IERC20(currency).safeTransferFrom(follower, recipient, adjustedAmount);
-        IERC20(currency).safeTransferFrom(follower, treasury, treasuryAmount);
+        feedInfo.priceFrom = uint256(priceConsumer.getLatestPrice(decodedCurrency));
+        feedInfo.priceTo = uint256(priceConsumer.getLatestPrice(feedInfo.currency));
+        feedInfo.treasuryAmount = (feedInfo.amount * treasuryFee) / BPS_MAX;
+        feedInfo.adjustedAmount = feedInfo.amount - feedInfo.treasuryAmount;
+        feedInfo.tokenFromDecimals = ERC20(decodedCurrency).decimals();
+        feedInfo.tokenToDecimals = ERC20(feedInfo.currency).decimals();
+        feedInfo.adjustedDesiredIn =
+            (feedInfo.adjustedAmount * feedInfo.priceTo * feedInfo.tokenFromDecimals) /
+            (feedInfo.tokenToDecimals * feedInfo.priceFrom);
+
+        feedInfo.adjustedDesiredInMax =
+            feedInfo.adjustedDesiredIn +
+            feedInfo.adjustedDesiredIn /
+            50;
+
+        feedInfo.treasuryDesiredIn =
+            (feedInfo.treasuryAmount * feedInfo.priceTo * feedInfo.tokenFromDecimals) /
+            (feedInfo.tokenToDecimals * feedInfo.priceFrom);
+        feedInfo.treasuryDesiredInMax =
+            feedInfo.treasuryDesiredIn +
+            feedInfo.treasuryDesiredIn /
+            50;
+
+        exchangeAndSendToRecipient(
+            follower,
+            feedInfo.recipient,
+            treasury,
+            decodedCurrency,
+            feedInfo.currency,
+            feedInfo.treasuryDesiredInMax,
+            feedInfo.adjustedDesiredInMax,
+            feedInfo.treasuryAmount,
+            feedInfo.adjustedAmount
+        );
     }
 
     function exchangeAndSendToRecipient(
